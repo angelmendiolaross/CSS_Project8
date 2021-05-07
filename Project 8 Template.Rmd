@@ -63,24 +63,68 @@ Fit a SuperLearner model to estimate the probability of someone dying from compl
 
 ```{r}
 # Fit SuperLearner Model
+listWrappers()
 
 ## sl lib
+SL.libraries = c("SL.glm", "SL.mean", "SL.glm.interaction", "SL.nnet", "SL.svm")
 
 ## Train/Test split
+# initial_split function from tidymodels/rsample
+heart_split <- initial_split(heart_disease, prop = 3/4)
+
+# Declare the training set with rsample::training()
+train <- training(heart_split)
+
+# y_train is mortality
+y_train <- train$mortality
+
+# x_train is everything but the outcome  
+x_train <- train %>%
+  select(-mortality & -ends_with("_2"))
+
+# Do the same procedure with the test set
+test <- testing(heart_split)
+
+y_test <- test$mortality
+
+x_test <- test %>%
+  select(-mortality & -ends_with("_2"))
 
 ## Train SuperLearner
+sl <- SuperLearner(Y = y_train,
+                   X = x_train,
+                   family = binomial(),
+                   SL.library = SL.libraries)
 
 ## Risk and Coefficient of each model
+sl
 
 ## Discrete winner and superlearner ensemble performance
+preds <- predict(sl,
+                 x_test,
+                 onlySL = TRUE)
+
+# start with y_test
+validation <- y_test %>%
+  # add our predictions
+  bind_cols(preds$pred[,1]) %>%
+  # rename columns
+  rename(obs = `...1`,
+         pred = `...2`) %>%
+  mutate(pred = ifelse(pred >= .5, 
+                           1,
+                           0))
 
 ## Confusion Matrix
+caret::confusionMatrix(as.factor(validation$pred),
+                       as.factor(validation$obs))
 ```
 
 ## Discussion Questions
 
 \begin{enumerate}
     \item Why should we, in general, prefer the SuperLearner ensemble to the discrete winner in cross-validation? Or in other words, what is the advantage of "blending" algorithms together and giving them each weights, rather than just using the single best algorithm (with best being defined as minimizing risk)?
+    The primary benefits hark back to the bias-variance tradeoff that we learned about last semester and can ultimately result in better predictions. The SuperLearner ensemble can make better predictions and achieve better performance than any single contributing model (including the best performing one). Ensemble methods reduce the variance of the prediction error by adding bias.
 \end{enumerate}
 
 # Targeted Maximum Likelihood Estimation
@@ -98,6 +142,63 @@ Using ggdag and daggity, draw a directed acylcic graph (DAG) that describes the 
 
 ```{r}
 # DAG for TMLE
+theme_set(theme_dag())
+source("pretty_dag.R")
+
+# dag with separate demographic factors
+dag <- dagify(Y ~ A,
+       Y ~ W1,
+       A ~ W1,
+       A ~ W2,
+       Y ~ W2,
+       A ~ W3,
+       Y ~ W3,
+       A ~ W4,
+       Y ~ W4,
+       Y ~ U,
+       A ~ U,
+       Y ~ U_W1,
+       A ~ U_W1,
+       Y ~ U_W2,
+       A ~ U_W2,
+       Y ~ U_W3,
+       A ~ U_W3,
+       W1 ~ U_W1,
+       W2 ~ U_W2,
+       W3 ~ U_W3,
+       W4 ~ U,
+       exposure = "A",
+       outcome = "Y",
+       labels = c("Y" = "mortality risk", "A" = "blood pressure \n medication", "W1" = "age", "W2" = "race", "W3" = "income", "W4" = "health covariates \n (e.g., blood pressure, cholesterol)", "U" = "background health \n exogenous factors"),
+              coords = list(x = c(A = 0, Y = 3, W1 = 1, U = 2.5, W2 = 1.5, W3 = 2, W4 = 2.5, U_W1 = 0.5, U_W2 = 1, U_W3 = 1.5),
+                            y = c(A = 1, Y = 1, W1 = 2, U = 3, W2 = 2, W3 = 2, W4 = 2, U_W1 = 3, U_W2 = 3, U_W3 = 3)))
+
+ggdag(dag, use_labels = "label") +
+  theme_dag()
+
+# dag with combined demographic factors
+dag <- dagify(Y ~ A,
+       Y ~ W1,
+       A ~ W1,
+       A ~ W2,
+       Y ~ W2,
+       W2 ~ W1,
+       Y ~ U,
+       A ~ U,
+       Y ~ U_W1,
+       A ~ U_W1,
+       Y ~ U_W2,
+       A ~ U_W2,
+       W1 ~ U_W1,
+       W2 ~ U_W2,
+       exposure = "A",
+       outcome = "Y",
+       labels = c("Y" = "mortality risk", "A" = "blood pressure \n medication", "W1" = "demographic covariates", "W2" = "health covariates \n (e.g., blood pressure, cholesterol)", "U_W1" = "background demographic \n exogenous factors", "U_W2" = "background health \n exogenous factors"),
+              coords = list(x = c(A = 0, Y = 3, W1 = 1, W2 = 2, U_W1 = 0.5, U_W2 = 2.5),
+                            y = c(A = 1, Y = 1, W1 = 2, W2 = 2, U_W1 = 3, U_W2 = 3)))
+
+ggdag(dag, use_labels = "label") +
+  theme_dag()
 ```
 
 ## TMLE Estimation
@@ -110,10 +211,30 @@ Use the `tmle` package to estimate a model for the effect of blood pressure medi
     \item Report the average treatment effect and any other relevant statistics
 \end{enumerate}
 
+Some convenience assumptions are necessary for identification. We would need to assume that there are no unmeasured common causes $U$ between $A$ and $Y$ (e.g, $U_A \perp U_Y$) and $U_A \perp U_W$ __or__ $U_Y \perp U_W$ where $W$ represents each of our covariates).
+
+```{r}
+Y <- heart_disease$mortality
+A <- heart_disease$blood_pressure_medication
+W <- heart_disease %>% select(age, simplified_race, college_educ, income_thousands, bmi, blood_pressure, chol)
+
+tmle_fit <-
+  tmle::tmle(Y = Y, 
+           A = A, 
+           W = W, 
+           Q.SL.library = SL.libraries, 
+           g.SL.library = SL.libraries) 
+
+tmle_fit
+```
+
+The average treatment effect of blood pressure medication is -0.355. The average treatment effect on the treated is -0.318. Both estimates are statistically significant at the $p<0.01$ level.
+
 ## Discussion Questions
 
 \begin{enumerate}
     \item What is a "double robust" estimator? Why does it provide a guarantee of consistency if either the outcome model or propensity score model is correctly specified? Or in other words, why does mispecifying one of the models not break the analysis? \textbf{Hint}: When answering this question, think about how your introductory statistics courses emphasized using theory to determine the correct outcome model, and in this course how we explored the benefits of matching.
+    A doubly robust estimator is consistent (and asymptotically unbiased) if either the outcome model $E_0(Y|A,W)$ or the propensity score $g_0(A|W)$ are correctly specified. Mispecifying one of these models does not break the analysis because of the law of large numbers. When $n$ is large, the sample average estimates the population average, making bias a second order term. If one of the bias terms in either model equals zero, taking the product of the two bias terms will also equal zero. Further, TMLE is an asymptotically (as $n \to \infty$) *efficient* estimator when both the outcome and exposure mechanisms are consistently estimated.
 \end{enumerate}
 
 # LTMLE Estimation
