@@ -146,35 +146,35 @@ theme_set(theme_dag())
 source("pretty_dag.R")
 
 # dag with separate demographic factors
-dag <- dagify(Y ~ A,
-       Y ~ W1,
-       A ~ W1,
-       A ~ W2,
-       Y ~ W2,
-       A ~ W3,
-       Y ~ W3,
-       A ~ W4,
-       Y ~ W4,
-       Y ~ U,
-       A ~ U,
-       Y ~ U_W1,
-       A ~ U_W1,
-       Y ~ U_W2,
-       A ~ U_W2,
-       Y ~ U_W3,
-       A ~ U_W3,
-       W1 ~ U_W1,
-       W2 ~ U_W2,
-       W3 ~ U_W3,
-       W4 ~ U,
-       exposure = "A",
-       outcome = "Y",
-       labels = c("Y" = "mortality risk", "A" = "blood pressure \n medication", "W1" = "age", "W2" = "race", "W3" = "income", "W4" = "health covariates \n (e.g., blood pressure, cholesterol)", "U" = "background health \n exogenous factors"),
-              coords = list(x = c(A = 0, Y = 3, W1 = 1, U = 2.5, W2 = 1.5, W3 = 2, W4 = 2.5, U_W1 = 0.5, U_W2 = 1, U_W3 = 1.5),
-                            y = c(A = 1, Y = 1, W1 = 2, U = 3, W2 = 2, W3 = 2, W4 = 2, U_W1 = 3, U_W2 = 3, U_W3 = 3)))
+# dag <- dagify(Y ~ A,
+  #     Y ~ W1,
+  #     A ~ W1,
+  #     A ~ W2,
+  #     Y ~ W2,
+  #     A ~ W3,
+  #     Y ~ W3,
+  #     A ~ W4,
+  #     Y ~ W4,
+  #     Y ~ U,
+  #     A ~ U,
+  #     Y ~ U_W1,
+  #     A ~ U_W1,
+  #     Y ~ U_W2,
+  #     A ~ U_W2,
+  #     Y ~ U_W3,
+  #     A ~ U_W3,
+  #     W1 ~ U_W1,
+  #     W2 ~ U_W2,
+  #     W3 ~ U_W3,
+  #     W4 ~ U,
+  #    exposure = "A",
+  #     outcome = "Y",
+  #     labels = c("Y" = "mortality risk", "A" = "blood pressure \n medication", "W1" = "age", "W2" = "race", "W3" = "income", "W4" = "health covariates \n (e.g., blood pressure, cholesterol)", "U" = "background health \n exogenous factors"),
+   #           coords = list(x = c(A = 0, Y = 3, W1 = 1, U = 2.5, W2 = 1.5, W3 = 2, W4 = 2.5, U_W1 = 0.5, U_W2 = 1, U_W3 = 1.5),
+    #                        y = c(A = 1, Y = 1, W1 = 2, U = 3, W2 = 2, W3 = 2, W4 = 2, U_W1 = 3, U_W2 = 3, U_W3 = 3)))
 
-ggdag(dag, use_labels = "label") +
-  theme_dag()
+# ggdag(dag, use_labels = "label") +
+#  theme_dag()
 
 # dag with combined demographic factors
 dag <- dagify(Y ~ A,
@@ -199,6 +199,8 @@ dag <- dagify(Y ~ A,
 
 ggdag(dag, use_labels = "label") +
   theme_dag()
+
+
 ```
 
 ## TMLE Estimation
@@ -211,7 +213,7 @@ Use the `tmle` package to estimate a model for the effect of blood pressure medi
     \item Report the average treatment effect and any other relevant statistics
 \end{enumerate}
 
-Some convenience assumptions are necessary for identification. We would need to assume that there are no unmeasured common causes $U$ between $A$ and $Y$ (e.g, $U_A \perp U_Y$) and $U_A \perp U_W$ __or__ $U_Y \perp U_W$ where $W$ represents each of our covariates).
+Some convenience assumptions are necessary for identification. We would need to assume that there are no unmeasured common causes $U$ between $A$ and $Y$ (e.g, $U_A \perp U_Y$) and $U_A \perp U_W$ __or__ $U_Y \perp U_W$ where $W$ represents each of our covariates). Although it is possible that unobserved demographic factors and unobserved health factors may have a causal relationship, we have chosen to maintain the independence assumption between $U_W1\perp U_W2$ so that we can proceed with the analysis.
 
 ```{r}
 Y <- heart_disease$mortality
@@ -251,6 +253,25 @@ Update your causal diagram to incorporate this new information. \textbf{Note}: I
 
 ```{r}
 # DAG for TMLE
+
+# dag with combined demographic factors
+dag <- dagify(Y1 ~ A0,
+              Y1 ~ A1,
+              Y1 ~ W_0,
+              Y1 ~ W_1,
+              A0 ~ W_0,
+              A0 ~ W_1,
+              A1 ~ W_0,
+              A1 ~ W_1,
+              W_1 ~ W_0,
+              A1 ~ A0,
+       exposure = c("A0", "A1"),
+       outcome = "Y1",
+      labels = c("Y1" = "mortality, t=1", "A0" = "bp meds, t=0", "A1" = "bp meds, t=1", "W_0" = "demog & health, t=0", "W_1" = "demog & health, t=1"),coords = list(x = c(A0 = -1.5, A1 = 2.5, Y1 = 3.25, W_0 = -1, W_1 = 2.5), y = c(A0 = -2, A1 = -2, Y1 = 3, W_0 = 1, W_1 = 1)))
+
+ggdag(dag, use_labels = "label") +
+  theme_dag()
+
 ```
 
 ## LTMLE Estimation
