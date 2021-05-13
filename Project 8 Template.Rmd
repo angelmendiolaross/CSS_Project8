@@ -66,7 +66,7 @@ Fit a SuperLearner model to estimate the probability of someone dying from compl
 listWrappers()
 
 ## sl lib
-SL.libraries = c("SL.glm", "SL.mean", "SL.glm.interaction", "SL.nnet", "SL.svm")
+SL.libraries = c("SL.glm", "SL.mean", "SL.glm.interaction", "SL.nnet", "SL.svm", "sl_libs")
 
 ## Train/Test split
 # initial_split function from tidymodels/rsample
@@ -251,6 +251,10 @@ Update your causal diagram to incorporate this new information. \textbf{Note}: I
 
 \textbf{Hint}: Keep in mind that any of the variables that end in "\_2" are likely affected by both the previous covariates and the first treatment when drawing your DAG.
 
+
+
+Note: Elizabeth and Jose ended up both making dags due to some GitHub snafu. This is Elizabeth's version: 
+
 ```{r}
 # DAG for TMLE
 
@@ -274,14 +278,98 @@ ggdag(dag, use_labels = "label") +
 
 ```
 
+
+Jose's version: 
+
+
+
+
+
+```{r}
+# DAG for TMLE
+
+library(dagitty)
+
+dag <- dagitty("dag {
+U_CF -> A1
+U_CF -> D1
+U_CF -> H1
+U_CF -> H2
+U_CF-> A1
+U_CF-> A2
+U_CF -> H2
+H2 -> Y 
+H1 -> Y 
+H1 -> H2
+D1 -> Y 
+D1 -> H1
+D1 -> A1
+H1 -> Y 
+U_CF -> Y 
+A1 -> Y
+A2 -> Y
+A1 -> A2
+
+
+               }")
+
+coordinates( dag) <-
+    list( x=c(A1=-3, D1=1, U_CF=2.5, A2=3, H1=3, H2=5, Y = 12),
+        y=c(A1=3, D1=2, U_CF=-2.5, A2=4, H1=2, H2=2, Y =-2))
+
+
+plot( dag ) 
+
+
+```
+
+
 ## LTMLE Estimation
 
 Use the `ltmle` package for this section. First fit a "naive model" that \textbf{does not} control for the time-dependent confounding. Then run a LTMLE model that does control for any time dependent confounding. Follow the same steps as in the TMLE section. Do you see a difference between the two estimates?
 
 ```{r}
+
+sl_libs <- c('SL.glmnet', 'SL.ranger', 'SL.glm', 'SL.gam', 'SL.logreg', 'SL.randomforest')
+
 ## Naive Model (no time-dependent confounding) estimate
 
+Y <- heart_disease$mortality
+A <- heart_disease$blood_pressure_medication
+C <- heart_disease %>% select(age, simplified_race, college_educ, income_thousands)
+L <- heart_disease %>% select(bmi, blood_pressure, chol)
+
+heartdf <- data.frame(C,A,L,Y) %>% 
+  rename(C0.a = age, C0.b = simplified_race, C0.c = college_educ, C0.d = income_thousands, L0.e = bmi, L0.f = blood_pressure, L0.g = chol)
+
 ## LTMLE estimate
+resultnaive <- ltmle(heartdf, Anodes = "A", Lnodes = c("L0.e", "L0.f", "L0.g"), Ynodes = "Y",  abar =1)
+
+summary(resultnaive)
+```
+
+
+
+
+
+```{r}
+
+#LMTLE estimate with time-dependent confounders
+
+Y <- heart_disease$mortality
+A1 <- heart_disease$blood_pressure_medication
+A2 <- heart_disease$blood_pressure_medication_2
+C <- heart_disease %>% select(age, simplified_race, college_educ, income_thousands)
+L <- heart_disease %>% select(bmi, blood_pressure, chol, bmi_2, blood_pressure_2, chol_2)
+
+heartdfftc <- data.frame(C,A1,A2,L,Y) %>% 
+  rename(C0.a = age, C0.b = simplified_race, C0.c = college_educ, C0.d = income_thousands, L0.e = bmi, L0.f = blood_pressure, L0.g = chol, L1.a = bmi_2, L1.b = blood_pressure_2, L1.c = chol_2)
+
+## LTMLE estimate
+result <- ltmle(heartdfftc, Anodes = c("A1", "A2"), Lnodes = c("L0.e", "L0.f", "L0.g","L1.a", "L1.b", "L1.c"), Ynodes = "Y",  abar =c(1,0))
+
+summary(result)
+
 ```
 
 ## Discussion Questions
@@ -289,4 +377,9 @@ Use the `ltmle` package for this section. First fit a "naive model" that \textbf
 \begin{enumerate}
     \item What sorts of time-dependent confounding should we be especially worried about? For instance, would we be concerned about a running variable for age the same way we might be concerned about blood pressure measured at two different times?
 \end{enumerate}
+
+In the case of attrition, we might be worried that the measurements at time 2 (i.e., the outcome (Y))
+might be affected by other exogenous factors that have an effect on measurements at time 2. For example, there are certain demographic attributes that are predictive of not showing up to a follow-up that then influences the outcomes. 
+
+For example, perhaps people of a certain racial/ethnic group or income category are less likely to pay a visit to the doctor until it becomes quite serious. This would result in confounding for both the measurement at time 1 and 2 but also on the outcome Y. Variables that change with time are particularly concerning for measuring the effect of treatment over time. Thus, perhaps someone's distrust of medicine goes up or down and varies on the basis of time. This would confound results. 
 
